@@ -76,7 +76,6 @@ def show_inventory(game_state):
             if isinstance(item, str):
                 print_item(index, item)
             elif isinstance(item, dict):
-                # Добавил сюда desc, чтобы было как в списке
                 print_item(index, item.get('name', 'Неизвестный предмет'), item.get('description'))
             else:
                 print_item(index, f"[неизвестный формат] {item}")

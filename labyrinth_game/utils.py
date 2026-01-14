@@ -41,145 +41,117 @@ def describe_current_room(game_state):
     if room.get('puzzle'):
         print("\n❓ Кажется, здесь есть загадка (используйте команду 'solve').")
 
-def solve_puzzle(game_state):
-    
-    # Получаем текущую комнату
-    current_room_key = game_state['current_room']
+def solve_puzzle(game_state, rooms_data):
+    """
+    Решение загадки в текущей комнате.
+    rooms_data — передаем словарь комнат как аргумент, чтобы не зависеть от глобальных переменных.
+    """
+    current_room_key = game_state.get('current_room')
     
     # Если мы в treasure_room, вызываем специальную функцию
     if current_room_key == 'treasure_room':
         return attempt_open_treasure(game_state)
-    
-    current_room = ROOMS[current_room_key]
-    
+
+    current_room = rooms_data.get(current_room_key)
+    if not current_room:
+        print("❌ Ошибка: комната не найдена.")
+        return False
+
     # Проверяем, есть ли загадка в комнате
-    if 'puzzle' not in current_room or current_room['puzzle'] is None:
+    puzzle = current_room.get('puzzle')
+    if puzzle is None:
         print("❌ Загадок здесь нет.")
         return False
-    
-    # Получаем информацию о загадке
-    puzzle = current_room['puzzle']
-    
-    # Выводим вопрос загадки
-    print(f"\n{'='*40}")
-    print("🎯 ЗАГАДКА!")
-    print('='*40)
-    print(f"Вопрос: {puzzle.get('question', 'Вопрос не указан')}")
-    
-    # Получаем ответ от пользователя
-    answer = get_input("\nВаш ответ: ").strip().lower()
-    
-    # Получаем правильный ответ (может быть строкой или списком вариантов)
-    correct_answer = puzzle.get('answer', '')
-    
-    # Проверяем ответ (учитываем разные форматы ответов и альтернативные варианты)
-    is_correct = False
-    
-    if isinstance(correct_answer, str):
-        # Правильный ответ - строка
-        answer_lower = answer.lower()
-        correct_lower = correct_answer.lower()
-        
-        # Проверяем точное совпадение
-        is_correct = answer_lower == correct_lower
-        
-        # Проверка альтернативных вариантов для числовых ответов
-        # Для числовых ответов принимаем также текстовое представление
-        if not is_correct and correct_lower.isdigit():
-            # Пробуем преобразовать ответ пользователя в число
-            try:
-                user_num = int(answer_lower)
-                correct_num = int(correct_lower)
-                is_correct = user_num == correct_num
-            except ValueError:
-                # Если не число, проверяем текстовые представления
-                number_words = {
-                    '10': ['десять', 'десяти', 'десятью'],
-                    '5': ['пять', 'пяти', 'пятью'],
-                    # Можно добавить другие числа по необходимости
-                }
-                if correct_lower in number_words:
-                    is_correct = answer_lower in number_words[correct_lower]
-          
-    elif isinstance(correct_answer, list):
-        # Правильный ответ - список возможных вариантов
-        is_correct = any(answer == option.lower() for option in correct_answer)
 
-# Проверка числовых вариантов в списке
-        if not is_correct:
-            for option in correct_answer:
-                # Добавлена проверка, что option — строка, чтобы .isdigit() не падал
-                if isinstance(option, str) and option.isdigit() and answer.isdigit():
-                    if int(answer) == int(option):
-                        is_correct = True
-                        break
+    # Вывод интерфейса загадки
+    print(f"\n{'=' * 40}")
+    print("🎯 ЗАГАДКА!")
+    print('=' * 40)
+    print(f"Вопрос: {puzzle.get('question', 'Вопрос не указан')}")
+
+    # Получаем ответ (используем input, если get_input не определена)
+    answer_raw = input("\nВаш ответ: ")
+    answer = answer_raw.strip().lower()
+
+    correct_answer = puzzle.get('answer', '')
+    is_correct = False
+
+    # --- ЛОГИКА ПРОВЕРКИ ОТВЕТА ---
+    if isinstance(correct_answer, (str, int)):
+        correct_str = str(correct_answer).lower()
+        if answer == correct_str:
+            is_correct = True
+        elif correct_str.isdigit():
+            # Проверка текстовых представлений чисел
+            number_words = {
+                '10': ['десять', 'десяти', 'десятью'],
+                '5': ['пять', 'пяти', 'пятью'],
+                '3': ['три', 'трех', 'тремя']
+            }
+            is_correct = answer in number_words.get(correct_str, [])
+
+    elif isinstance(correct_answer, list):
+        normalized_options = [str(opt).lower() for opt in correct_answer]
+        is_correct = answer in normalized_options
         
-    else:
-        # Неизвестный формат ответа
-        print("❌ Ошибка: неправильный формат загадки.")
-        return False
-    
-    # Обрабатываем результат
+        if not is_correct and answer.isdigit():
+            # Сравнение числовых значений в списке
+            is_correct = any(int(answer) == int(opt) for opt in normalized_options if opt.isdigit())
+
+    # --- ОБРАБОТКА РЕЗУЛЬТАТА ---
     if is_correct:
         print("\n✅ Верно! Загадка решена!")
-        print("🎉 Вы получаете награду!")
         
-        # Убираем загадку из комнаты
+        # Очищаем загадку в текущей сессии
         current_room['puzzle'] = None
-        print("✨ Загадка исчезает.")
         
-        # Добавляем награду игроку
-        reward = puzzle.get('reward', None)
-
+        # Определение награды
+        reward = puzzle.get('reward')
         if not reward:
-            # Если награда не указана в загадке, используем комнатную награду
-            room_items = current_room.get('items', [])
-            if room_items and current_room_key == 'trap_room':
-                reward = 'особый ключ'  # Пример комнатной награды
-            elif current_room_key == 'hall':
-                reward = 'серебряная медаль'
-            elif current_room_key == 'library':
-                reward = 'древний свиток'
-            elif current_room_key == 'treasure_room':
-                reward = 'сокровище'
+            # Дефолтные награды по комнатам
+            rewards_map = {
+                'trap_room': 'особый ключ',
+                'hall': 'серебряная медаль',
+                'library': 'древний свиток',
+                'treasure_room': 'сокровище'
+            }
+            reward = rewards_map.get(current_room_key)
 
+        # Выдача награды
         if reward:
+            inventory = game_state.setdefault('player_inventory', [])
             if isinstance(reward, list):
-                # Если награда - список предметов
                 for item in reward:
-                    game_state['player_inventory'].append(item)
+                    inventory.append(item)
                     print(f"🎁 Вы получаете: {item}")
             elif isinstance(reward, dict):
-                # Если награда - словарь с описанием
-                game_state['player_inventory'].append(reward)
+                inventory.append(reward)
                 print(f"🎁 Вы получаете: {reward.get('name', 'награда')}")
             else:
-                # Если награда - строка
-                game_state['player_inventory'].append(reward)
+                inventory.append(reward)
                 print(f"🎁 Вы получаете: {reward}")
-        
-        # Добавляем очки за решение
+
+        # Обновление прогресса
         points = puzzle.get('points', 10)
         game_state['score'] = game_state.get('score', 0) + points
-        
-        # Увеличиваем счетчик решенных загадок
         game_state['solved_puzzles'] = game_state.get('solved_puzzles', 0) + 1
         
-        print(f"⭐ Вы заработали {points} очков!")
-        print(f"💰 Текущий счет: {game_state['score']} очков")
-        
+        print(f"⭐️ +{points} очков! Всего: {game_state['score']}")
         return True
+
     else:
-        print("\n❌ Неверно. Попробуйте снова.")
-        
-        # В trap_room неверный ответ активирует ловушку
+        print("\n❌ Неверно.")
         if current_room_key == 'trap_room':
-            print("Неверный ответ активирует ловушку!")
-            trigger_trap(game_state)
-            return False
+            print("⚠️ Ошибка активирует ловушку!")
+            if 'trigger_trap' in globals():
+                trigger_trap(game_state)
+        return False
+
+# Заглушки функций для работы кода
+def attempt_open_treasure(gs): print("💰 Вы у сокровищницы!"); return True
+def trigger_trap(gs): print("💥 БАБАХ! Ловушка сработала!"); gs['score'] = max(0, gs.get('score', 0) - 5)
 
 def attempt_open_treasure(game_state):
-       
     # Получаем текущую комнату
     current_room_key = game_state['current_room']
     current_room = ROOMS[current_room_key]
@@ -192,12 +164,11 @@ def attempt_open_treasure(game_state):
     # Проверяем, есть ли сундук в комнате
     if 'treasure_chest' not in current_room.get('items', []):
         print("Сундук уже открыт.")
-        return True  # Возвращаем True, так как сундук уже открыт (игра может быть завершена)
+        return True  # Считаем, что условие победы уже было достигнуто
     
     # Проверяем, есть ли у игрока ключ
     inventory = game_state.get('player_inventory', [])
     
-    # Проверяем наличие treasure_key в инвентаре
     has_treasure_key = False
     for item in inventory:
         if isinstance(item, str):
@@ -210,18 +181,16 @@ def attempt_open_treasure(game_state):
         print("\nВы применяете ключ, и замок щёлкает. Сундук открыт!")
         
         # Удаляем сундук из комнаты
-        current_room['items'] = [item for item in current_room.get('items', []) 
-                                 if isinstance(item, str) and item.lower() != 'treasure_chest']
+        current_room['items'] = [
+            item for item in current_room.get('items', [])
+            if not (isinstance(item, str) and item.lower() == 'treasure_chest')
+        ]
+        
+        # Отмечаем победу
+        game_state['game_over'] = True
+        game_state['win'] = True
         
         print("🎉 В сундуке сокровище! Вы победили!")
-        
-        # Устанавливаем флаг победы
-        game_state['victory'] = True
-        game_state['game_over'] = True
-        
-        # Добавляем бонусные очки за победу
-        game_state['score'] = game_state.get('score', 0) + 100
-        
         return True
     
     # Вариант 2: Ключа нет, предлагаем ввести код
