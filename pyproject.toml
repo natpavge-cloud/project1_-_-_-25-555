@@ -22,3 +22,8 @@ packages = [
 
 [tool.poetry.scripts]
 project = "labyrinth_game.main:main"
+
+[dependency-groups]
+dev = [
+    "ruff (>=0.14.11,<0.15.0)"
+]
